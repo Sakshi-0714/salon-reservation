@@ -344,3 +344,29 @@ button {
   }
 }
 
+/* Keep page content above global/background layers in production */
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+
+.App,
+.app,
+.page,
+.container,
+.landing-content,
+.hero-content,
+.services-page,
+.services-container,
+.auth-page {
+  position: relative;
+  z-index: 10;
+}
+
+body::before,
+body::after {
+  z-index: -1 !important;
+  pointer-events: none;
+}
+

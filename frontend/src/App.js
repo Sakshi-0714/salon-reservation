@@ -10,6 +10,7 @@ import ContactPage from './pages/ContactPage';
 import ProfilePage from './pages/ProfilePage';
 import StaffDetailsPage from './pages/StaffDetailsPage';
 import AdminAnalyticsDashboard from './pages/AdminAnalyticsDashboard';
+import './App.css';
 import './index.css';
 
 function App() {
