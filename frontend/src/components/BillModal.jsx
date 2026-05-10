@@ -3,6 +3,9 @@ import React from 'react';
 const BillModal = ({ isOpen, onClose, bill }) => {
   if (!isOpen || !bill) return null;
 
+  const customerPhone = bill.phone || bill.customer_phone;
+  const billNumber = customerPhone || bill.bill_number;
+
   const handlePrint = () => {
     window.print();
   };
@@ -22,11 +25,11 @@ const BillModal = ({ isOpen, onClose, bill }) => {
           <div style={{ borderTop: '2px solid #f1f1f1', borderBottom: '2px solid #f1f1f1', padding: '15px 0', marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
             <div>
               <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Bill To:</strong> {bill.user_name || bill.customer_name}</p>
-              <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Phone:</strong> {bill.phone || bill.customer_phone}</p>
+              <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Phone:</strong> {customerPhone}</p>
               <p style={{ margin: 0, fontSize: '0.85rem' }}><strong>Email:</strong> {bill.email || 'N/A'}</p>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Bill No:</strong> {bill.bill_number}</p>
+              <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Bill No:</strong> {billNumber}</p>
               <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Date:</strong> {new Date(bill.appointment_date || bill.date).toLocaleDateString()}</p>
               <p style={{ margin: 0, fontSize: '0.85rem' }}><strong>Status:</strong> <span style={{ color: bill.payment_status === 'Paid' ? '#2ecc71' : '#f39c12', fontWeight: 'bold' }}>{bill.payment_status}</span></p>
             </div>

@@ -27,12 +27,6 @@ const LandingPage = () => {
       <Navbar />
       <div className="hero-section">
         <div className="hero-content">
-          <div className="ornament">
-            <svg width="40" height="20" viewBox="0 0 40 20" fill="none" stroke="currentColor">
-              <path d="M0 10H15M25 10H40" stroke="var(--primary)" strokeWidth="1" />
-              <rect x="15" y="5" width="10" height="10" transform="rotate(45 20 10)" stroke="var(--primary)" strokeWidth="1" />
-            </svg>
-          </div>
           <h2 className="heading-cursive">Massage therapy and spa</h2>
           <h1 className="heading-primary">Welcome to our salon</h1>
           <p className="hero-subtitle">You owe yourself this moment. Make an appointment in just a click!</p>
@@ -92,11 +86,6 @@ const LandingPage = () => {
           align-items: center;
           gap: 1.5rem;
           margin-top: 5rem;
-        }
-
-        .ornament {
-          color: var(--primary);
-          margin-bottom: -1rem;
         }
 
         .hero-subtitle {

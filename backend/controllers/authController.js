@@ -58,11 +58,13 @@ const sendVerification = async (req, res) => {
     }
 
     const code = Math.floor(1000 + Math.random() * 9000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60000); // 10 mins
 
     // Delete any existing codes for this email first to avoid stale entries
     await db.execute('DELETE FROM verification_codes WHERE email = ?', [email]);
-    await db.execute('INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)', [email, code, expiresAt]);
+    await db.execute(
+      'INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
+      [email, code]
+    );
 
     let message = {
       from: `"StaySync Salon" <${process.env.SMTP_EMAIL}>`,
@@ -85,7 +87,7 @@ const sendVerification = async (req, res) => {
     res.status(200).json({ message: 'Verification code sent! Please check your email inbox.' });
   } catch (error) {
     console.error('Send Verification Error:', error.message);
-    
+
     // Differentiate SMTP errors from DB errors
     if (error.code === 'EAUTH' || error.responseCode === 535) {
       return res.status(500).json({ message: 'Email service authentication failed. Please contact support.' });
@@ -93,7 +95,7 @@ const sendVerification = async (req, res) => {
     if (error.code === 'ESOCKET' || error.code === 'ECONNREFUSED') {
       return res.status(500).json({ message: 'Cannot connect to email service. Please try again later.' });
     }
-    
+
     res.status(500).json({ message: 'Failed to send verification email. Please try again.', error: error.message });
   }
 };
@@ -116,7 +118,12 @@ const verifyCode = async (req, res) => {
       return res.status(400).json({ message: 'Invalid verification code. Please check and try again.' });
     }
 
-    if (new Date(latestCode.expires_at) < new Date()) {
+    const [validCode] = await db.execute(
+      'SELECT * FROM verification_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, code]
+    );
+
+    if (validCode.length === 0) {
       return res.status(400).json({ message: 'Verification code has expired. Please request a new one.' });
     }
 
@@ -156,7 +163,12 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Invalid verification code' });
     }
 
-    if (new Date(latestCode.expires_at) < new Date()) {
+    const [validCode] = await db.execute(
+      'SELECT * FROM verification_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, code]
+    );
+
+    if (validCode.length === 0) {
       return res.status(400).json({ message: 'Verification code expired. Please request a new one.' });
     }
 
@@ -265,11 +277,13 @@ const sendResetCode = async (req, res) => {
     }
 
     const code = Math.floor(1000 + Math.random() * 9000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60000); // 10 mins
 
     // Delete old codes, insert new
     await db.execute('DELETE FROM verification_codes WHERE email = ?', [email]);
-    await db.execute('INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)', [email, code, expiresAt]);
+    await db.execute(
+      'INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
+      [email, code]
+    );
 
     let message = {
       from: `"StaySync Salon" <${process.env.SMTP_EMAIL}>`,
@@ -292,11 +306,11 @@ const sendResetCode = async (req, res) => {
     res.status(200).json({ message: 'Reset code sent! Please check your email inbox.' });
   } catch (error) {
     console.error('Send Reset Code Error:', error.message);
-    
+
     if (error.code === 'EAUTH' || error.responseCode === 535) {
       return res.status(500).json({ message: 'Email service authentication failed. Please contact support.' });
     }
-    
+
     res.status(500).json({ message: 'Failed to send reset email. Please try again.', error: error.message });
   }
 };
@@ -320,7 +334,12 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ message: 'Invalid reset code' });
     }
 
-    if (new Date(latestCode.expires_at) < new Date()) {
+    const [validCode] = await db.execute(
+      'SELECT * FROM verification_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, code]
+    );
+
+    if (validCode.length === 0) {
       return res.status(400).json({ message: 'Reset code expired. Please request a new one.' });
     }
 

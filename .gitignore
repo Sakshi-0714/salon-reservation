@@ -1,32 +1,12 @@
-# Dependencies
+# Ignore node modules and env files
 node_modules/
-
-# Environment files
+backend/node_modules/
+frontend/node_modules/
+backend/.env
+frontend/.env
 .env
-.env.local
-.env.*.local
-
-# Build output
-frontend/build/
-
-# Logs
-*.log
-backend/*.log
-backend/log.txt
-backend/error.txt
-
-# IDE
-.vscode/
-.idea/
-
-# OS
 .DS_Store
-Thumbs.db
-
-# Debug output files
-backend/output.json
-backend/db_out.json
-backend/db_out_services.json
-backend/db_desc.json
-backend/db_error.log
-backend/latest_output.txt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json

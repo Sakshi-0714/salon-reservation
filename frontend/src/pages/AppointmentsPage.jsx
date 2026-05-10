@@ -10,7 +10,7 @@ const AppointmentsPage = () => {
   const [message, setMessage] = useState('');
   const [paymentMethods, setPaymentMethods] = useState({}); // To track "In Person" choices locally
   
-  // Review Modal State
+  // Review Modal Statean
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewService, setReviewService] = useState('');
   const [reviewRating, setReviewRating] = useState(5);

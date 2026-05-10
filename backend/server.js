@@ -55,12 +55,11 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
 
-  // Verify SMTP connection on startup (non-blocking)
+  // Verify SMTP connection on startup
   try {
     const { verifySMTP } = require('./controllers/authController');
     await verifySMTP();
-    console.log('SMTP connection verified successfully');
   } catch (err) {
-    console.warn('SMTP verification failed on startup, but server will continue:', err.message);
+    console.error('SMTP startup check failed:', err.message);
   }
 });

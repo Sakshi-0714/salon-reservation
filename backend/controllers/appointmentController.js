@@ -2,6 +2,7 @@ const db = require('../config/db');
 const nodemailer = require('nodemailer');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const { sendBillSMS, sendPaymentConfirmationSMS, formatPhoneNumber } = require('../utils/smsService');
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_dummy_key_id',
@@ -17,6 +18,11 @@ const transporter = nodemailer.createTransport({
 });
 
 const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+
+const getBillNumberFromPhone = (phone, appointmentId) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits || `APPT-${appointmentId}`;
+};
 
 // @desc    Create new appointment
 // @route   POST /api/appointments
@@ -63,7 +69,7 @@ const createAppointment = async (req, res) => {
 
     const isAlreadyBooked = existingAppointments.some(row => {
       let svcs = row.services;
-      if (typeof svcs === 'string') { try { svcs = JSON.parse(svcs); } catch(e) { svcs = []; } }
+      if (typeof svcs === 'string') { try { svcs = JSON.parse(svcs); } catch (e) { svcs = []; } }
       return svcs.some(s => s.status !== 'Rejected' && s.status !== 'Not Available' && s.status !== 'Cancelled');
     });
 
@@ -101,7 +107,7 @@ const getMyAppointments = async (req, res) => {
       WHERE a.user_id = ?
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
     `, [req.user.id]);
-    
+
     res.json(rows);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -126,13 +132,13 @@ const getAppointments = async (req, res) => {
     allStaff.forEach(s => {
       staffMap[s.assigned_service] = s.name;
     });
-    
+
     const resolvedRows = rows.map(row => {
       let services = row.services;
       if (typeof services === 'string') {
-        try { services = JSON.parse(services); } catch(e) { services = []; }
+        try { services = JSON.parse(services); } catch (e) { services = []; }
       }
-      
+
       const resolvedServices = services.map(s => {
         const baseName = s.name.split(' - ')[0].trim();
         return {
@@ -140,10 +146,10 @@ const getAppointments = async (req, res) => {
           assigned_staff: s.assigned_staff || staffMap[baseName] || 'Unassigned'
         };
       });
-      
+
       return { ...row, services: resolvedServices };
     });
-    
+
     res.json(resolvedRows);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -162,20 +168,20 @@ const updateAppointmentStatus = async (req, res) => {
       JOIN users u ON a.user_id = u.id 
       WHERE a.id = ?
     `, [req.params.id]);
-    
+
     if (rows.length === 0) {
       return res.status(404).json({ message: 'Appointment not found' });
     }
-    
+
     let services = rows[0].services;
     if (typeof services === 'string') {
       services = JSON.parse(services);
     }
-    
+
     if (services[serviceIndex]) {
       services[serviceIndex].status = status;
     }
-    
+
     await db.execute(
       'UPDATE appointments SET services = ? WHERE id = ?',
       [JSON.stringify(services), req.params.id]
@@ -185,19 +191,19 @@ const updateAppointmentStatus = async (req, res) => {
     const allReviewed = services.every(s => s.status !== 'Pending');
     if (allReviewed && !services[0].emailSent && status !== 'Completed') {
       services[0].emailSent = true;
-      
+
       // Save the emailSent flag
       await db.execute(
         'UPDATE appointments SET services = ? WHERE id = ?',
         [JSON.stringify(services), req.params.id]
       );
-      
+
       // Build consolidated email
       let summaryStr = services.map(s => {
         let mark = s.status === 'Approved' ? '✅ Approved' : (s.status === 'Not Available' ? '❌ Not Available' : s.status);
         return `- ${s.name} (₹${s.price}): ${mark}`;
       }).join('\n');
-      
+
       const mailOptions = {
         from: `"StaySync Admin" <${process.env.SMTP_EMAIL}>`,
         to: rows[0].email,
@@ -253,16 +259,16 @@ const cancelSession = async (req, res) => {
       JOIN users u ON a.user_id = u.id 
       WHERE a.id = ?
     `, [req.params.id]);
-    
+
     if (rows.length === 0) return res.status(404).json({ message: 'Appointment not found' });
-    
+
     let services = rows[0].services;
     if (typeof services === 'string') {
-      try { services = JSON.parse(services); } catch(e) { services = []; }
+      try { services = JSON.parse(services); } catch (e) { services = []; }
     }
-    
+
     services = services.map(s => ({ ...s, status: 'Cancelled' }));
-    
+
     await db.execute(
       'UPDATE appointments SET services = ? WHERE id = ?',
       [JSON.stringify(services), req.params.id]
@@ -298,16 +304,16 @@ const userCancelSession = async (req, res) => {
       JOIN users u ON a.user_id = u.id 
       WHERE a.id = ? AND a.user_id = ?
     `, [req.params.id, req.user.id]);
-    
+
     if (rows.length === 0) return res.status(404).json({ message: 'Appointment not found or not authorized' });
-    
+
     let services = rows[0].services;
     if (typeof services === 'string') {
-      try { services = JSON.parse(services); } catch(e) { services = []; }
+      try { services = JSON.parse(services); } catch (e) { services = []; }
     }
-    
+
     services = services.map(s => ({ ...s, status: 'Cancelled' }));
-    
+
     await db.execute(
       'UPDATE appointments SET services = ? WHERE id = ?',
       [JSON.stringify(services), req.params.id]
@@ -384,13 +390,13 @@ const createRazorpayOrder = async (req, res) => {
 
   try {
     const options = {
-      amount: amount, 
+      amount: amount,
       currency: "INR",
       receipt: `receipt_order_${Date.now()}`,
     };
 
     const order = await razorpay.orders.create(options);
-    
+
     if (!order) {
       return res.status(500).json({ message: 'Failed to create Razorpay order' });
     }
@@ -417,7 +423,7 @@ const verifyPayment = async (req, res) => {
 
   try {
     const secret = process.env.RAZORPAY_KEY_SECRET || 'dummy_key_secret';
-    
+
     // Create signature to verify
     const generated_signature = crypto
       .createHmac('sha256', secret)
@@ -441,27 +447,54 @@ const verifyPayment = async (req, res) => {
 
       await db.execute(query, params);
 
-      // Automatically generate bills for these appointments
+      // Automatically generate bills for these appointments and send SMS
       for (const id of appointment_ids) {
         try {
-          // Calculate total amount for this appointment
-          const [apptRows] = await db.execute('SELECT services, payment_status FROM appointments WHERE id = ?', [id]);
+          // Calculate total amount for this appointment and get user details
+          const [apptRows] = await db.execute(`
+            SELECT a.services, a.payment_status, a.appointment_date, a.appointment_time, u.phone, u.name as user_name
+            FROM appointments a
+            JOIN users u ON a.user_id = u.id
+            WHERE a.id = ?
+          `, [id]);
+          
           if (apptRows.length > 0) {
-            let services = apptRows[0].services;
+            const appt = apptRows[0];
+            let services = appt.services;
             if (typeof services === 'string') {
-              try { services = JSON.parse(services); } catch(e) { services = []; }
+              try { services = JSON.parse(services); } catch (e) { services = []; }
             }
             const totalAmount = services.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
-            const billNumber = `BILL-${Date.now()}-${id}`;
-            
+            const billNumber = getBillNumberFromPhone(appt.phone, id);
+
+            // Insert bill record
             await db.execute(
               'INSERT INTO bills (appointment_id, bill_number, total_amount, payment_status) VALUES (?, ?, ?, ?)',
               [id, billNumber, totalAmount, 'Paid']
             );
+
+            // Send SMS with bill details
+            const formattedPhone = formatPhoneNumber(appt.phone);
+            if (formattedPhone) {
+              const billDetails = {
+                billNumber: billNumber,
+                totalAmount: totalAmount.toFixed(2),
+                userName: appt.user_name,
+                appointmentDate: appt.appointment_date,
+                appointmentTime: appt.appointment_time
+              };
+              
+              const smsResult = await sendBillSMS(formattedPhone, billDetails);
+              if (smsResult.success) {
+                console.log(`Bill SMS sent successfully for appointment ${id}`);
+              } else {
+                console.warn(`Failed to send bill SMS for appointment ${id}: ${smsResult.error}`);
+              }
+            }
           }
         } catch (billError) {
-          console.error(`Failed to auto-generate bill for appointment ${id}:`, billError);
-          // Don't fail the whole request if bill generation fails
+          console.error(`Failed to auto-generate bill or send SMS for appointment ${id}:`, billError);
+          // Don't fail the whole request if bill generation or SMS fails
         }
       }
     }
@@ -490,11 +523,11 @@ const searchAppointmentsByPhone = async (req, res) => {
     const resolvedRows = rows.map(row => {
       let services = row.services;
       if (typeof services === 'string') {
-        try { services = JSON.parse(services); } catch(e) { services = []; }
+        try { services = JSON.parse(services); } catch (e) { services = []; }
       }
       return { ...row, services };
     });
-    
+
     res.json(resolvedRows);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -522,14 +555,14 @@ const createBill = async (req, res) => {
     const appt = apptRows[0];
     let services = appt.services;
     if (typeof services === 'string') {
-      try { services = JSON.parse(services); } catch(e) { services = []; }
+      try { services = JSON.parse(services); } catch (e) { services = []; }
     }
 
     // 2. Calculate total amount
     const totalAmount = services.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
 
-    // 3. Generate bill number
-    const billNumber = `BILL-${Date.now()}-${id}`;
+    // 3. Generate bill number from the customer's mobile number
+    const billNumber = getBillNumberFromPhone(appt.phone, id);
 
     // 4. Insert into bills table
     await db.execute(
@@ -537,8 +570,27 @@ const createBill = async (req, res) => {
       [id, billNumber, totalAmount, appt.payment_status || 'Pending']
     );
 
-    res.status(201).json({ 
-      message: 'Bill generated successfully', 
+    // 5. Send SMS with bill details if payment is confirmed
+    if (appt.payment_status === 'Paid' || appt.paid_advance) {
+      const formattedPhone = formatPhoneNumber(appt.phone);
+      if (formattedPhone) {
+        const billDetails = {
+          billNumber: billNumber,
+          totalAmount: totalAmount.toFixed(2),
+          userName: appt.user_name,
+          appointmentDate: appt.appointment_date,
+          appointmentTime: appt.appointment_time
+        };
+        
+        const smsResult = await sendBillSMS(formattedPhone, billDetails);
+        if (!smsResult.success) {
+          console.warn(`Warning: Failed to send SMS for bill ${billNumber}: ${smsResult.error}`);
+        }
+      }
+    }
+
+    res.status(201).json({
+      message: 'Bill generated successfully',
       bill: {
         bill_number: billNumber,
         total_amount: totalAmount,
@@ -553,8 +605,18 @@ const createBill = async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       // If bill already exists, fetch it
       try {
-        const [billRows] = await db.execute('SELECT * FROM bills WHERE appointment_id = ?', [id]);
-        return res.json({ message: 'Bill already exists', bill: billRows[0] });
+        const [billRows] = await db.execute(`
+          SELECT b.*, a.appointment_date, a.appointment_time, a.services, a.payment_status, u.name as user_name, u.email, u.phone 
+          FROM bills b
+          JOIN appointments a ON b.appointment_id = a.id
+          JOIN users u ON a.user_id = u.id
+          WHERE b.appointment_id = ?
+        `, [id]);
+        const bill = billRows[0];
+        if (bill && typeof bill.services === 'string') {
+          try { bill.services = JSON.parse(bill.services); } catch (e) { bill.services = []; }
+        }
+        return res.json({ message: 'Bill already exists', bill });
       } catch (e) {
         return res.status(500).json({ message: 'Server error', error: e.message });
       }
@@ -593,11 +655,11 @@ const getBill = async (req, res) => {
         const appt = apptRows[0];
         let services = appt.services;
         if (typeof services === 'string') {
-          try { services = JSON.parse(services); } catch(e) { services = []; }
+          try { services = JSON.parse(services); } catch (e) { services = []; }
         }
         const totalAmount = services.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
-        const billNumber = `BILL-AUTO-${Date.now()}-${id}`;
-        
+        const billNumber = getBillNumberFromPhone(appt.phone, id);
+
         await db.execute(
           'INSERT INTO bills (appointment_id, bill_number, total_amount, payment_status) VALUES (?, ?, ?, ?)',
           [id, billNumber, totalAmount, appt.payment_status || 'Paid']
@@ -611,11 +673,11 @@ const getBill = async (req, res) => {
           JOIN users u ON a.user_id = u.id
           WHERE b.appointment_id = ?
         `, [id]);
-        
+
         if (newBillRows.length > 0) {
           const bill = newBillRows[0];
           if (typeof bill.services === 'string') {
-            try { bill.services = JSON.parse(bill.services); } catch(e) { bill.services = []; }
+            try { bill.services = JSON.parse(bill.services); } catch (e) { bill.services = []; }
           }
           return res.json(bill);
         }
@@ -628,7 +690,7 @@ const getBill = async (req, res) => {
 
     const bill = billRows[0];
     if (typeof bill.services === 'string') {
-      try { bill.services = JSON.parse(bill.services); } catch(e) { bill.services = []; }
+      try { bill.services = JSON.parse(bill.services); } catch (e) { bill.services = []; }
     }
 
     res.json(bill);
