@@ -11,6 +11,13 @@ const validatePassword = (password) => {
   return null;
 };
 
+const validatePhone = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return 'Mobile number is required';
+  if (!/^\d{10}$/.test(digits)) return 'Mobile number must be exactly 10 digits';
+  return null;
+};
+
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'supersecret123salonkey', {
     expiresIn: '30d',
@@ -158,8 +165,8 @@ const registerUser = async (req, res) => {
   const { name, email, phone, password, code } = req.body;
 
   // Input validation
-  if (!name || !email || !password || !code) {
-    return res.status(400).json({ message: 'Name, email, password, and verification code are required' });
+  if (!name || !email || !phone || !password || !code) {
+    return res.status(400).json({ message: 'Name, email, mobile number, password, and verification code are required' });
   }
 
   try {
@@ -172,6 +179,11 @@ const registerUser = async (req, res) => {
     const pwError = validatePassword(password);
     if (pwError) {
       return res.status(400).json({ message: pwError });
+    }
+
+    const phoneError = validatePhone(phone);
+    if (phoneError) {
+      return res.status(400).json({ message: phoneError });
     }
 
     const [codes] = await db.execute('SELECT * FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1', [email]);
@@ -202,14 +214,14 @@ const registerUser = async (req, res) => {
 
     const [result] = await db.execute(
       'INSERT INTO users (name, email, phone, password, role) VALUES (?, ?, ?, ?, ?)',
-      [name, email, phone || null, hashedPassword, role]
+      [name, email, String(phone).replace(/\D/g, ''), hashedPassword, role]
     );
 
     res.status(201).json({
       id: result.insertId,
       name,
       email,
-      phone,
+      phone: String(phone).replace(/\D/g, ''),
       role,
       token: generateToken(result.insertId, role),
     });
@@ -258,10 +270,15 @@ const updateUserProfile = async (req, res) => {
     return res.status(400).json({ message: 'Name is required' });
   }
 
+  const phoneError = validatePhone(phone);
+  if (phoneError) {
+    return res.status(400).json({ message: phoneError });
+  }
+
   try {
     const [result] = await db.execute(
       'UPDATE users SET name = ?, phone = ? WHERE id = ?',
-      [name, phone || null, req.user.id]
+      [name, String(phone).replace(/\D/g, ''), req.user.id]
     );
 
     if (result.affectedRows === 0) {

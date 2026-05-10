@@ -30,12 +30,18 @@ const ProfilePage = () => {
   };
 
   const handleSave = async () => {
+    const mobile = String(formData.phone || '').replace(/\D/g, '');
+    if (!/^\d{10}$/.test(mobile)) {
+      setErrorMsg('Mobile number must be exactly 10 digits');
+      return;
+    }
+
     try {
       setLoading(true);
       setErrorMsg('');
       setSuccessMsg('');
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      const { data } = await axios.put(`${API_BASE_URL}/api/auth/profile`, formData, config);
+      const { data } = await axios.put(`${API_BASE_URL}/api/auth/profile`, { ...formData, phone: mobile }, config);
       localStorage.setItem('userInfo', JSON.stringify(data));
       setUser(data);
       setIsEditing(false);
@@ -90,7 +96,7 @@ const ProfilePage = () => {
             <div style={{ display: 'flex', alignItems: 'center', padding: '10px', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', border: isEditing ? '1px solid var(--primary)' : 'none' }}>
               <Phone size={18} style={{ marginRight: '10px', color: 'var(--primary)' }} />
               {isEditing ? (
-                <input type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} style={{ background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', width: '100%', outline: 'none' }} placeholder="e.g. 8456379156" />
+                <input type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10)})} style={{ background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', width: '100%', outline: 'none' }} placeholder="e.g. 8456379156" />
               ) : (
                 <span>{user.phone || 'Not provided'}</span>
               )}

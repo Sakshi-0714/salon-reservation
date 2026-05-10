@@ -11,9 +11,9 @@ const validateEmail = (email) => {
 };
 
 const validatePhone = (phone) => {
-  if (!phone) return '';
+  if (!phone) return 'Mobile number is required';
   const re = /^\d{10}$/;
-  return re.test(phone) ? '' : 'Phone number must be exactly 10 digits';
+  return re.test(phone) ? '' : 'Mobile number must be exactly 10 digits';
 };
 
 const validatePassword = (password) => {
@@ -774,7 +774,7 @@ const AuthPage = () => {
 
                       <div className="form-group">
                         <label className="form-label">
-                          Phone Number <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>(Optional)</span>
+                          Mobile Number
                         </label>
                         <input
                           type="tel"

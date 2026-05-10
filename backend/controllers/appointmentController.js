@@ -76,9 +76,17 @@ const createPaidBillAndSendSMS = async (connection, appointmentId, userId, payme
   if (!shouldSendSms) {
     smsStatus = 'sent';
   } else if (formattedPhone) {
-    const smsResult = await sendBillSMS(formattedPhone, billDetails);
-    smsStatus = smsResult.success ? 'sent' : 'failed';
-    smsError = smsResult.success ? null : smsResult.error || 'SMS delivery failed';
+    try {
+      const smsResult = await sendBillSMS(formattedPhone, billDetails);
+      smsStatus = smsResult.success ? 'sent' : 'failed';
+      smsError = smsResult.success ? null : smsResult.error || 'SMS delivery failed';
+    } catch (error) {
+      smsStatus = 'failed';
+      smsError = error.message || 'SMS delivery failed';
+      console.error(`Bill SMS failed for appointment ${appointmentId}:`, smsError);
+    }
+  } else {
+    smsError = 'Registered mobile number is not available';
   }
 
   await connection.execute(`
@@ -575,6 +583,13 @@ const verifyPayment = async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('Verify Payment Error:', error);
+    if (['ER_BAD_FIELD_ERROR', 'ER_NO_SUCH_TABLE'].includes(error.code)) {
+      return res.status(500).json({
+        message: 'Payment was verified, but bill generation failed because the backend database schema is not updated. Please redeploy/restart the backend so the bill table migration runs.',
+        error: error.message
+      });
+    }
+
     res.status(500).json({ message: 'Server error during payment verification', error: error.message });
   } finally {
     connection.release();

@@ -104,6 +104,13 @@ const AppointmentsPage = () => {
   };
 
   const handleOpenPayment = async (groupIds, groupKey, totalAmount) => {
+    const registeredMobile = String(user.phone || '').replace(/\D/g, '');
+    if (!/^\d{10}$/.test(registeredMobile)) {
+      alert('Please add a valid 10-digit mobile number in your profile before paying online. Your bill will be generated with this registered mobile number and sent to it.');
+      navigate('/profile');
+      return;
+    }
+
     const res = await loadRazorpayScript();
     if (!res) {
       alert('Razorpay SDK failed to load. Are you online?');
@@ -161,7 +168,7 @@ const AppointmentsPage = () => {
         prefill: {
           name: user.name || 'Customer',
           email: user.email || '',
-          contact: user.phone || '9999999999',
+          contact: registeredMobile,
           vpa: 'success@razorpay'
         },
         theme: {

@@ -11,7 +11,7 @@
  */
 const sendBillSMS = async (phoneNumber, billDetails) => {
   if (!phoneNumber || !phoneNumber.trim()) {
-    console.warn('Mock SMS: No phone number provided for bill delivery');
+    console.warn('SMS: No phone number provided for bill delivery');
     return { success: false, error: 'Phone number not available' };
   }
 

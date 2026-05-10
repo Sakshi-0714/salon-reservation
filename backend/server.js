@@ -59,6 +59,48 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/health/details', async (req, res) => {
+  try {
+    const db = require('./config/db');
+    const [billColumns] = await db.execute(`
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'bills'
+      ORDER BY ORDINAL_POSITION
+    `);
+
+    const columns = billColumns.map(row => row.COLUMN_NAME);
+    const requiredBillColumns = [
+      'customer_name',
+      'customer_phone',
+      'customer_email',
+      'services',
+      'razorpay_order_id',
+      'razorpay_payment_id',
+      'sms_status',
+      'sms_error',
+      'sms_sent_at',
+      'updated_at'
+    ];
+
+    res.json({
+      status: 'ok',
+      smtp_configured: Boolean(process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD),
+      razorpay_configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      sms_provider: process.env.SMS_PROVIDER || 'mock',
+      bill_schema_ok: requiredBillColumns.every(column => columns.includes(column)),
+      missing_bill_columns: requiredBillColumns.filter(column => !columns.includes(column)),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Health details check failed',
+      error: error.message,
+    });
+  }
+});
+
 // Global error handler — catches unhandled route errors
 app.use((err, req, res, next) => {
   console.error('Unhandled Error:', err.stack);
