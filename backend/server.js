@@ -88,7 +88,7 @@ app.get('/health/details', async (req, res) => {
       status: 'ok',
       smtp_configured: Boolean(process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD),
       razorpay_configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
-      sms_provider: process.env.SMS_PROVIDER || 'mock',
+      sms_provider: 'mock',
       bill_schema_ok: requiredBillColumns.every(column => columns.includes(column)),
       missing_bill_columns: requiredBillColumns.filter(column => !columns.includes(column)),
     });
