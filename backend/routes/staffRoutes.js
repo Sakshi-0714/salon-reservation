@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { getAllStaff, addStaff, updateStaff, deleteStaff } = require('../controllers/staffController');
+const { getAllStaff, getStaffStatus, addStaff, updateStaff, deleteStaff } = require('../controllers/staffController');
 const { protect, admin } = require('../middleware/authMiddleware');
+
+router.get('/status', getStaffStatus);
 
 router.route('/')
     .get(protect, admin, getAllStaff)

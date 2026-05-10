@@ -69,6 +69,13 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
 
+  try {
+    const { ensureDatabase } = require('./utils/ensureDatabase');
+    await ensureDatabase();
+  } catch (err) {
+    console.error('Database initialization failed:', err.message);
+  }
+
   // Verify SMTP connection on startup
   try {
     const { verifySMTP } = require('./controllers/authController');

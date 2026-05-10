@@ -12,6 +12,18 @@ const getAllStaff = async (req, res) => {
     }
 };
 
+// @desc    Get public staff availability status for booking page
+// @route   GET /api/staff/status
+// @access  Public
+const getStaffStatus = async (req, res) => {
+    try {
+        const [staff] = await db.execute('SELECT name, assigned_service, status FROM staff');
+        res.json(staff);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching staff status', error: error.message });
+    }
+};
+
 // @desc    Add new staff
 // @route   POST /api/staff
 // @access  Private/Admin
@@ -90,6 +102,7 @@ const deleteStaff = async (req, res) => {
 
 module.exports = {
     getAllStaff,
+    getStaffStatus,
     addStaff,
     updateStaff,
     deleteStaff
