@@ -1,3 +1,5 @@
+const axios = require('axios');
+
 /**
  * Send SMS to customer with bill details (mock implementation)
  * @param {string} phoneNumber - Customer's phone number
@@ -39,36 +41,28 @@ const sendFast2SMS = async (phoneNumber, message) => {
     return { success: false, error: 'Valid 10-digit Indian mobile number is required' };
   }
 
-  const response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-    method: 'POST',
-    headers: {
-      authorization: apiKey,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      accept: 'application/json'
-    },
-    body: new URLSearchParams({
+  const { data: payload } = await axios.post(
+    'https://www.fast2sms.com/dev/bulkV2',
+    {
       route: process.env.FAST2SMS_ROUTE || 'q',
       message,
+      language: 'english',
       numbers,
-      flash: '0'
-    })
-  });
+    },
+    {
+      headers: {
+        authorization: apiKey,
+      },
+    }
+  );
 
-  const responseText = await response.text();
-  let payload = {};
-  try {
-    payload = JSON.parse(responseText);
-  } catch (error) {
-    payload = { raw: responseText };
-  }
-
-  if (!response.ok || payload.return === false) {
+  if (payload?.return === false) {
     return {
       success: false,
       provider: 'fast2sms',
       error: Array.isArray(payload.message)
         ? payload.message.join(', ')
-        : payload.message || `Fast2SMS failed with status ${response.status}`
+        : payload.message || 'Fast2SMS rejected the SMS request'
     };
   }
 
