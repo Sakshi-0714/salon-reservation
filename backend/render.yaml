@@ -19,7 +19,15 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: SMS_PROVIDER
-        value: mock
+        value: smslocal
+      - key: SMSLOCAL_API_KEY
+        sync: false
+      - key: SMSLOCAL_ROUTE
+        sync: false
+      - key: SMSLOCAL_SENDER_ID
+        sync: false
+      - key: SMSLOCAL_TEMPLATE_ID
+        sync: false
       - key: SMTP_EMAIL
         sync: false
       - key: SMTP_PASSWORD
