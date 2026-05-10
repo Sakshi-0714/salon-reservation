@@ -22,11 +22,11 @@ const sendSMSLocal = async (phoneNumber, message) => {
   const sender = process.env.SMSLOCAL_SENDER_ID;
   const templateId = process.env.SMSLOCAL_TEMPLATE_ID;
 
-  if (!apiKey || !route || !sender) {
+  if (!apiKey || !route) {
     return {
       success: false,
       provider: 'smslocal',
-      error: 'SMSLocal is selected, but SMSLOCAL_API_KEY, SMSLOCAL_ROUTE, or SMSLOCAL_SENDER_ID is missing'
+      error: 'SMSLocal is selected, but SMSLOCAL_API_KEY or SMSLOCAL_ROUTE is missing'
     };
   }
 
@@ -42,10 +42,13 @@ const sendSMSLocal = async (phoneNumber, message) => {
   const params = new URLSearchParams({
     key: apiKey,
     route,
-    sender,
     number,
     sms: message,
   });
+
+  if (sender) {
+    params.set('sender', sender);
+  }
 
   if (templateId) {
     params.set('templateid', templateId);

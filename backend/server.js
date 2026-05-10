@@ -95,8 +95,7 @@ app.get('/health/details', async (req, res) => {
       sms_provider: smsProvider,
       smslocal_configured: Boolean(
         process.env.SMSLOCAL_API_KEY &&
-        process.env.SMSLOCAL_ROUTE &&
-        process.env.SMSLOCAL_SENDER_ID
+        process.env.SMSLOCAL_ROUTE
       ),
       bill_schema_ok: requiredBillColumns.every(column => columns.includes(column)),
       missing_bill_columns: requiredBillColumns.filter(column => !columns.includes(column)),
