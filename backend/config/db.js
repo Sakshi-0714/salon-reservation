@@ -1,12 +1,33 @@
 const mysql = require('mysql2');
 require('dotenv').config();
 
+const databaseUrl = process.env.DATABASE_URL || process.env.MYSQL_PUBLIC_URL || process.env.MYSQL_URL;
+
+const getDatabaseConfig = () => {
+  if (!databaseUrl) {
+    return {
+      host: process.env.DB_HOST || process.env.MYSQLHOST || 'localhost',
+      port: Number(process.env.DB_PORT || process.env.MYSQLPORT) || 3306,
+      user: process.env.DB_USER || process.env.MYSQLUSER || 'root',
+      password: process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || 'Salon123',
+      database: process.env.DB_NAME || process.env.MYSQLDATABASE || 'salon_db',
+    };
+  }
+
+  const parsed = new URL(databaseUrl);
+  return {
+    host: parsed.hostname,
+    port: Number(parsed.port) || 3306,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: parsed.pathname.replace(/^\//, ''),
+  };
+};
+
+const dbConfig = getDatabaseConfig();
+
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Salon123',
-  database: process.env.DB_NAME || 'salon_db',
+  ...dbConfig,
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_CONNECTION_LIMIT) || 10,
   queueLimit: 0,

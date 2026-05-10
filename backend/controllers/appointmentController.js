@@ -2,7 +2,7 @@ const db = require('../config/db');
 const nodemailer = require('nodemailer');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-const { sendBillSMS, sendPaymentConfirmationSMS, formatPhoneNumber } = require('../utils/smsService');
+const { sendBillSMS, formatPhoneNumber } = require('../utils/smsService');
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_dummy_key_id',
@@ -22,6 +22,107 @@ const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(
 const getBillNumberFromPhone = (phone, appointmentId) => {
   const digits = String(phone || '').replace(/\D/g, '');
   return digits || `APPT-${appointmentId}`;
+};
+
+const parseServices = (services) => {
+  if (typeof services !== 'string') return Array.isArray(services) ? services : [];
+  try {
+    return JSON.parse(services);
+  } catch (error) {
+    return [];
+  }
+};
+
+const calculateBillTotal = (services) => services.reduce((sum, service) => {
+  const status = String(service.status || '').toLowerCase();
+  if (['not available', 'rejected', 'cancelled'].includes(status)) return sum;
+  return sum + (Number(service.price) || 0);
+}, 0);
+
+const createPaidBillAndSendSMS = async (connection, appointmentId, userId, paymentDetails) => {
+  const [apptRows] = await connection.execute(`
+    SELECT a.id, a.services, a.payment_status, a.appointment_date, a.appointment_time,
+           u.phone, u.name as user_name, u.email
+    FROM appointments a
+    JOIN users u ON a.user_id = u.id
+    WHERE a.id = ? AND a.user_id = ? AND a.payment_status = 'Paid' AND a.razorpay_payment_id IS NOT NULL
+  `, [appointmentId, userId]);
+
+  if (apptRows.length === 0) {
+    throw new Error(`Appointment ${appointmentId} is not confirmed as paid`);
+  }
+
+  const appt = apptRows[0];
+  const services = parseServices(appt.services);
+  const totalAmount = calculateBillTotal(services);
+  const billReference = getBillNumberFromPhone(appt.phone, appointmentId);
+  const billDetails = {
+    billNumber: billReference,
+    totalAmount: totalAmount.toFixed(2),
+    userName: appt.user_name,
+    appointmentDate: appt.appointment_date,
+    appointmentTime: appt.appointment_time,
+  };
+
+  const [existingBills] = await connection.execute(
+    'SELECT sms_status FROM bills WHERE appointment_id = ?',
+    [appointmentId]
+  );
+  const shouldSendSms = existingBills[0]?.sms_status !== 'sent';
+  const formattedPhone = formatPhoneNumber(appt.phone);
+  let smsStatus = 'skipped';
+  let smsError = null;
+
+  if (!shouldSendSms) {
+    smsStatus = 'sent';
+  } else if (formattedPhone) {
+    const smsResult = await sendBillSMS(formattedPhone, billDetails);
+    smsStatus = smsResult.success ? 'sent' : 'failed';
+    smsError = smsResult.success ? null : smsResult.error || 'SMS delivery failed';
+  }
+
+  await connection.execute(`
+    INSERT INTO bills (
+      appointment_id, bill_number, customer_name, customer_phone, customer_email,
+      services, total_amount, payment_status, razorpay_order_id, razorpay_payment_id,
+      sms_status, sms_error, sms_sent_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, ?, ${shouldSendSms && smsStatus === 'sent' ? 'CURRENT_TIMESTAMP' : 'NULL'})
+    ON DUPLICATE KEY UPDATE
+      bill_number = VALUES(bill_number),
+      customer_name = VALUES(customer_name),
+      customer_phone = VALUES(customer_phone),
+      customer_email = VALUES(customer_email),
+      services = VALUES(services),
+      total_amount = VALUES(total_amount),
+      payment_status = 'Paid',
+      razorpay_order_id = VALUES(razorpay_order_id),
+      razorpay_payment_id = VALUES(razorpay_payment_id),
+      sms_status = VALUES(sms_status),
+      sms_error = VALUES(sms_error),
+      sms_sent_at = COALESCE(VALUES(sms_sent_at), sms_sent_at)
+  `, [
+    appointmentId,
+    billReference,
+    appt.user_name,
+    appt.phone,
+    appt.email,
+    JSON.stringify(services),
+    totalAmount,
+    paymentDetails.razorpay_order_id,
+    paymentDetails.razorpay_payment_id,
+    smsStatus,
+    smsError,
+  ]);
+
+  return {
+    appointment_id: appointmentId,
+    bill_number: billReference,
+    total_amount: totalAmount,
+    customer_name: appt.user_name,
+    customer_phone: appt.phone,
+    sms_status: smsStatus,
+  };
 };
 
 // @desc    Create new appointment
@@ -421,6 +522,7 @@ const getRazorpayKey = (req, res) => {
 const verifyPayment = async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, appointment_ids } = req.body;
 
+  const connection = await db.getConnection();
   try {
     const secret = process.env.RAZORPAY_KEY_SECRET || 'dummy_key_secret';
 
@@ -434,8 +536,15 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment verification failed: Invalid signature' });
     }
 
+    if (!Array.isArray(appointment_ids) || appointment_ids.length === 0) {
+      return res.status(400).json({ message: 'At least one appointment id is required' });
+    }
+
+    await connection.beginTransaction();
+
     // Payment is verified. Update DB for all appointment IDs provided
-    if (appointment_ids && appointment_ids.length > 0) {
+    const paidBills = [];
+    if (appointment_ids.length > 0) {
       const idsStr = appointment_ids.map(() => '?').join(',');
       const params = ['Paid', 'Razorpay', razorpay_order_id, razorpay_payment_id, req.user.id, ...appointment_ids];
 
@@ -445,64 +554,30 @@ const verifyPayment = async (req, res) => {
         WHERE user_id = ? AND id IN (${idsStr})
       `;
 
-      await db.execute(query, params);
+      const [updateResult] = await connection.execute(query, params);
 
-      // Automatically generate bills for these appointments and send SMS
+      if (updateResult.affectedRows !== appointment_ids.length) {
+        await connection.rollback();
+        return res.status(404).json({ message: 'One or more appointments were not found for this user' });
+      }
+
       for (const id of appointment_ids) {
-        try {
-          // Calculate total amount for this appointment and get user details
-          const [apptRows] = await db.execute(`
-            SELECT a.services, a.payment_status, a.appointment_date, a.appointment_time, u.phone, u.name as user_name
-            FROM appointments a
-            JOIN users u ON a.user_id = u.id
-            WHERE a.id = ?
-          `, [id]);
-          
-          if (apptRows.length > 0) {
-            const appt = apptRows[0];
-            let services = appt.services;
-            if (typeof services === 'string') {
-              try { services = JSON.parse(services); } catch (e) { services = []; }
-            }
-            const totalAmount = services.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
-            const billNumber = getBillNumberFromPhone(appt.phone, id);
-
-            // Insert bill record
-            await db.execute(
-              'INSERT INTO bills (appointment_id, bill_number, total_amount, payment_status) VALUES (?, ?, ?, ?)',
-              [id, billNumber, totalAmount, 'Paid']
-            );
-
-            // Send SMS with bill details
-            const formattedPhone = formatPhoneNumber(appt.phone);
-            if (formattedPhone) {
-              const billDetails = {
-                billNumber: billNumber,
-                totalAmount: totalAmount.toFixed(2),
-                userName: appt.user_name,
-                appointmentDate: appt.appointment_date,
-                appointmentTime: appt.appointment_time
-              };
-              
-              const smsResult = await sendBillSMS(formattedPhone, billDetails);
-              if (smsResult.success) {
-                console.log(`Bill SMS sent successfully for appointment ${id}`);
-              } else {
-                console.warn(`Failed to send bill SMS for appointment ${id}: ${smsResult.error}`);
-              }
-            }
-          }
-        } catch (billError) {
-          console.error(`Failed to auto-generate bill or send SMS for appointment ${id}:`, billError);
-          // Don't fail the whole request if bill generation or SMS fails
-        }
+        const bill = await createPaidBillAndSendSMS(connection, id, req.user.id, {
+          razorpay_order_id,
+          razorpay_payment_id,
+        });
+        paidBills.push(bill);
       }
     }
 
-    res.json({ message: 'Payment verified successfully' });
+    await connection.commit();
+    res.json({ message: 'Payment verified successfully', bills: paidBills });
   } catch (error) {
+    await connection.rollback();
     console.error('Verify Payment Error:', error);
     res.status(500).json({ message: 'Server error during payment verification', error: error.message });
+  } finally {
+    connection.release();
   }
 };
 
@@ -539,9 +614,12 @@ const searchAppointmentsByPhone = async (req, res) => {
 // @access  Private/Admin
 const createBill = async (req, res) => {
   const { id } = req.params;
+  const connection = await db.getConnection();
   try {
+    await connection.beginTransaction();
+
     // 1. Fetch appointment details
-    const [apptRows] = await db.execute(`
+    const [apptRows] = await connection.execute(`
       SELECT a.*, u.name as user_name, u.email, u.phone 
       FROM appointments a 
       JOIN users u ON a.user_id = u.id
@@ -553,55 +631,24 @@ const createBill = async (req, res) => {
     }
 
     const appt = apptRows[0];
-    let services = appt.services;
-    if (typeof services === 'string') {
-      try { services = JSON.parse(services); } catch (e) { services = []; }
+    if (appt.payment_status !== 'Paid' || !appt.razorpay_payment_id) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Bill can be generated only after successful Razorpay payment confirmation.' });
     }
 
-    // 2. Calculate total amount
-    const totalAmount = services.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+    const bill = await createPaidBillAndSendSMS(connection, id, appt.user_id, {
+      razorpay_order_id: appt.razorpay_order_id,
+      razorpay_payment_id: appt.razorpay_payment_id,
+    });
 
-    // 3. Generate bill number from the customer's mobile number
-    const billNumber = getBillNumberFromPhone(appt.phone, id);
-
-    // 4. Insert into bills table
-    await db.execute(
-      'INSERT INTO bills (appointment_id, bill_number, total_amount, payment_status) VALUES (?, ?, ?, ?)',
-      [id, billNumber, totalAmount, appt.payment_status || 'Pending']
-    );
-
-    // 5. Send SMS with bill details if payment is confirmed
-    if (appt.payment_status === 'Paid' || appt.paid_advance) {
-      const formattedPhone = formatPhoneNumber(appt.phone);
-      if (formattedPhone) {
-        const billDetails = {
-          billNumber: billNumber,
-          totalAmount: totalAmount.toFixed(2),
-          userName: appt.user_name,
-          appointmentDate: appt.appointment_date,
-          appointmentTime: appt.appointment_time
-        };
-        
-        const smsResult = await sendBillSMS(formattedPhone, billDetails);
-        if (!smsResult.success) {
-          console.warn(`Warning: Failed to send SMS for bill ${billNumber}: ${smsResult.error}`);
-        }
-      }
-    }
+    await connection.commit();
 
     res.status(201).json({
       message: 'Bill generated successfully',
-      bill: {
-        bill_number: billNumber,
-        total_amount: totalAmount,
-        customer_name: appt.user_name,
-        customer_phone: appt.phone,
-        services: services,
-        date: appt.appointment_date,
-        payment_status: appt.payment_status
-      }
+      bill
     });
   } catch (error) {
+    await connection.rollback();
     if (error.code === 'ER_DUP_ENTRY') {
       // If bill already exists, fetch it
       try {
@@ -622,6 +669,8 @@ const createBill = async (req, res) => {
       }
     }
     res.status(500).json({ message: 'Server error', error: error.message });
+  } finally {
+    connection.release();
   }
 };
 
@@ -649,41 +698,7 @@ const getBill = async (req, res) => {
         WHERE a.id = ?
       `, [id]);
 
-      if (apptRows.length > 0 && (apptRows[0].payment_status === 'Paid' || apptRows[0].paid_advance == 1)) {
-        console.log(`Appointment ${id} is paid. Generating bill...`);
-        // Auto-generate bill since it's already paid but record is missing
-        const appt = apptRows[0];
-        let services = appt.services;
-        if (typeof services === 'string') {
-          try { services = JSON.parse(services); } catch (e) { services = []; }
-        }
-        const totalAmount = services.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
-        const billNumber = getBillNumberFromPhone(appt.phone, id);
-
-        await db.execute(
-          'INSERT INTO bills (appointment_id, bill_number, total_amount, payment_status) VALUES (?, ?, ?, ?)',
-          [id, billNumber, totalAmount, appt.payment_status || 'Paid']
-        );
-
-        // Fetch the newly created bill with joined data
-        const [newBillRows] = await db.execute(`
-          SELECT b.*, a.appointment_date, a.appointment_time, a.services, a.payment_status, u.name as user_name, u.email, u.phone 
-          FROM bills b
-          JOIN appointments a ON b.appointment_id = a.id
-          JOIN users u ON a.user_id = u.id
-          WHERE b.appointment_id = ?
-        `, [id]);
-
-        if (newBillRows.length > 0) {
-          const bill = newBillRows[0];
-          if (typeof bill.services === 'string') {
-            try { bill.services = JSON.parse(bill.services); } catch (e) { bill.services = []; }
-          }
-          return res.json(bill);
-        }
-      } else {
-        console.log(`Appointment ${id} not found or not paid. Status: ${apptRows[0]?.payment_status}, Paid Advance: ${apptRows[0]?.paid_advance}`);
-      }
+      console.log(`Appointment ${id} bill is missing. Status: ${apptRows[0]?.payment_status}, Razorpay Payment: ${apptRows[0]?.razorpay_payment_id || 'none'}`);
 
       return res.status(404).json({ message: 'Bill not found or not generated yet.' });
     }

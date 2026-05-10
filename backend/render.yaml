@@ -10,20 +10,16 @@ services:
         value: production
       - key: PORT
         value: 5000
-      - key: DB_HOST
+      - key: MYSQL_PUBLIC_URL
         sync: false
-      - key: DB_PORT
-        value: 3306
-      - key: DB_USER
-        value: root
-      - key: DB_PASSWORD
-        sync: false
-      - key: DB_NAME
-        value: salon_db
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SMS_PROVIDER
+        value: mock
       - key: SMTP_EMAIL
         sync: false
       - key: SMTP_PASSWORD

@@ -1,5 +1,8 @@
-CREATE DATABASE IF NOT EXISTS salon_db;
-USE salon_db;
+-- Run this file inside the target database.
+-- Railway MySQL usually uses the database from MYSQL_PUBLIC_URL, commonly `railway`.
+-- For local MySQL, create/select your local DB first, for example:
+-- CREATE DATABASE IF NOT EXISTS salon_db;
+-- USE salon_db;
 
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -78,9 +81,19 @@ CREATE TABLE IF NOT EXISTS bills (
   id INT AUTO_INCREMENT PRIMARY KEY,
   appointment_id INT NOT NULL UNIQUE,
   bill_number VARCHAR(100) NOT NULL,
+  customer_name VARCHAR(100),
+  customer_phone VARCHAR(20),
+  customer_email VARCHAR(100),
+  services JSON,
   total_amount DECIMAL(10, 2) NOT NULL,
   payment_status VARCHAR(50) DEFAULT 'Pending',
+  razorpay_order_id VARCHAR(255),
+  razorpay_payment_id VARCHAR(255),
+  sms_status ENUM('pending', 'sent', 'failed', 'skipped') DEFAULT 'pending',
+  sms_error TEXT,
+  sms_sent_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
 );
 
