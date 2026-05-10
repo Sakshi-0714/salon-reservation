@@ -45,25 +45,30 @@ const sendFast2SMS = async (phoneNumber, message) => {
   try {
     const response = await axios.post(
       'https://www.fast2sms.com/dev/bulkV2',
-      {
+      new URLSearchParams({
         route: process.env.FAST2SMS_ROUTE || 'q',
         message,
         language: 'english',
         numbers,
-      },
+        flash: '0',
+        sms_details: '1',
+      }).toString(),
       {
         headers: {
           authorization: apiKey,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Cache-Control': 'no-cache',
         },
       }
     );
     payload = response.data;
   } catch (error) {
-    const providerMessage = error.response?.data?.message || error.response?.data || error.message;
+    const providerMessage = formatProviderError(error.response?.data || error.message);
+    console.error('Fast2SMS error:', error.response?.data || error.message);
     return {
       success: false,
       provider: 'fast2sms',
-      error: Array.isArray(providerMessage) ? providerMessage.join(', ') : String(providerMessage)
+      error: providerMessage
     };
   }
 
@@ -85,6 +90,18 @@ const sendFast2SMS = async (phoneNumber, message) => {
     requestId: payload.request_id,
     message: Array.isArray(payload.message) ? payload.message.join(', ') : 'SMS sent'
   };
+};
+
+const formatProviderError = (providerError) => {
+  if (Array.isArray(providerError)) return providerError.join(', ');
+  if (providerError && typeof providerError === 'object') {
+    const message = Array.isArray(providerError.message)
+      ? providerError.message.join(', ')
+      : providerError.message;
+    const status = providerError.status_code ? `Fast2SMS ${providerError.status_code}` : 'Fast2SMS';
+    return message ? `${status}: ${message}` : JSON.stringify(providerError);
+  }
+  return String(providerError);
 };
 
 const getSmsProvider = () => {
