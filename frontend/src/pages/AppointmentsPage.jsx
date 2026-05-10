@@ -19,6 +19,7 @@ const AppointmentsPage = () => {
   // Bill Modal State
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
+  const [sendingBillSms, setSendingBillSms] = useState(false);
   
   const user = JSON.parse(localStorage.getItem('userInfo'));
   const navigate = useNavigate();
@@ -137,14 +138,18 @@ const AppointmentsPage = () => {
         order_id: order.id,
         handler: async function (response) {
           try {
-            await axios.post(`${API_BASE_URL}/api/appointments/verify-payment`, {
+            const { data: paymentData } = await axios.post(`${API_BASE_URL}/api/appointments/verify-payment`, {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_signature: response.razorpay_signature,
               appointment_ids: groupIds
             }, config);
 
-            setMessage(`Online payment successful via Razorpay for your appointment session!`);
+            const failedSms = paymentData.bills?.find((bill) => bill.sms_status && bill.sms_status !== 'sent');
+            setMessage(failedSms
+              ? `Payment successful, but bill SMS was not sent: ${failedSms.sms_error || failedSms.sms_status}`
+              : `Online payment successful via Razorpay. Bill SMS sent to your registered mobile number.`
+            );
             
             setAppointments(appointments.map(a => 
               groupIds.includes(a.id) ? { ...a, paid_advance: 1, payment_status: 'Paid' } : a
@@ -290,6 +295,29 @@ const AppointmentsPage = () => {
     } catch (error) {
       console.error('Error fetching bill', error);
       alert('Bill not found or not generated yet.');
+    }
+  };
+
+  const sendBillSms = async () => {
+    if (!selectedBill?.appointment_id) return;
+
+    try {
+      setSendingBillSms(true);
+      const config = { headers: { Authorization: `Bearer ${user.token}` } };
+      const { data } = await axios.post(`${API_BASE_URL}/api/appointments/${selectedBill.appointment_id}/bill/sms`, {}, config);
+      setSelectedBill((prev) => ({
+        ...prev,
+        ...data.bill,
+        sms_status: data.bill.sms_status,
+        sms_error: data.bill.sms_error || null,
+      }));
+      setMessage(data.message);
+    } catch (error) {
+      const messageText = error.response?.data?.message || error.message || 'Failed to send bill SMS';
+      setMessage(messageText);
+      alert(messageText);
+    } finally {
+      setSendingBillSms(false);
     }
   };
 
@@ -463,6 +491,8 @@ const AppointmentsPage = () => {
         isOpen={isBillModalOpen} 
         onClose={() => setIsBillModalOpen(false)} 
         bill={selectedBill} 
+        onSendSms={sendBillSms}
+        sendingSms={sendingBillSms}
       />
 
       <style>{`

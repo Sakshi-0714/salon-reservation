@@ -1,6 +1,6 @@
 import React from 'react';
 
-const BillModal = ({ isOpen, onClose, bill }) => {
+const BillModal = ({ isOpen, onClose, bill, onSendSms, sendingSms }) => {
   if (!isOpen || !bill) return null;
 
   const customerPhone = bill.phone || bill.customer_phone;
@@ -32,8 +32,15 @@ const BillModal = ({ isOpen, onClose, bill }) => {
               <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Bill No:</strong> {billNumber}</p>
               <p style={{ margin: '0 0 5px 0', fontSize: '0.85rem' }}><strong>Date:</strong> {new Date(bill.appointment_date || bill.date).toLocaleDateString()}</p>
               <p style={{ margin: 0, fontSize: '0.85rem' }}><strong>Status:</strong> <span style={{ color: bill.payment_status === 'Paid' ? '#2ecc71' : '#f39c12', fontWeight: 'bold' }}>{bill.payment_status}</span></p>
+              <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem' }}><strong>SMS:</strong> <span style={{ color: bill.sms_status === 'sent' ? '#2ecc71' : '#c0392b', fontWeight: 'bold' }}>{bill.sms_status || 'pending'}</span></p>
             </div>
           </div>
+
+          {bill.sms_error && (
+            <div style={{ margin: '-5px 0 20px 0', padding: '10px', background: '#fff4f4', color: '#9f1d1d', fontSize: '0.8rem', border: '1px solid #ffd4d4', borderRadius: '4px' }}>
+              SMS error: {bill.sms_error}
+            </div>
+          )}
 
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '30px' }}>
             <thead>
@@ -75,6 +82,7 @@ const BillModal = ({ isOpen, onClose, bill }) => {
         </div>
 
         <div style={{ marginTop: '30px', display: 'flex', gap: '10px', justifyContent: 'center' }} className="no-print">
+          {onSendSms && <button className="btn-primary" onClick={onSendSms} disabled={sendingSms} style={{ backgroundColor: '#d4af37', borderColor: '#d4af37', color: '#111', padding: '10px 20px', cursor: sendingSms ? 'not-allowed' : 'pointer', borderRadius: '4px' }}>{sendingSms ? 'Sending SMS...' : 'Send Bill SMS'}</button>}
           <button className="btn-primary" onClick={handlePrint} style={{ backgroundColor: '#333', borderColor: '#333', color: '#fff', padding: '10px 20px', cursor: 'pointer', borderRadius: '4px' }}>Print Bill</button>
           <button className="btn-outline" onClick={onClose} style={{ borderColor: '#333', color: '#333', padding: '10px 20px', cursor: 'pointer', borderRadius: '4px', background: 'transparent' }}>Close</button>
         </div>

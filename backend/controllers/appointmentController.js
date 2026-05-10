@@ -39,7 +39,7 @@ const calculateBillTotal = (services) => services.reduce((sum, service) => {
   return sum + (Number(service.price) || 0);
 }, 0);
 
-const createPaidBillAndSendSMS = async (connection, appointmentId, userId, paymentDetails) => {
+const createPaidBillAndSendSMS = async (connection, appointmentId, userId, paymentDetails, options = {}) => {
   const [apptRows] = await connection.execute(`
     SELECT a.id, a.services, a.payment_status, a.appointment_date, a.appointment_time,
            u.phone, u.name as user_name, u.email
@@ -68,7 +68,7 @@ const createPaidBillAndSendSMS = async (connection, appointmentId, userId, payme
     'SELECT sms_status FROM bills WHERE appointment_id = ?',
     [appointmentId]
   );
-  const shouldSendSms = existingBills[0]?.sms_status !== 'sent';
+  const shouldSendSms = options.forceSms === true || existingBills[0]?.sms_status !== 'sent';
   const formattedPhone = formatPhoneNumber(appt.phone);
   let smsStatus = 'skipped';
   let smsError = null;
@@ -130,6 +130,7 @@ const createPaidBillAndSendSMS = async (connection, appointmentId, userId, payme
     customer_name: appt.user_name,
     customer_phone: appt.phone,
     sms_status: smsStatus,
+    sms_error: smsError,
   };
 };
 
@@ -729,6 +730,60 @@ const getBill = async (req, res) => {
   }
 };
 
+// @desc    Force resend bill SMS for a paid appointment
+// @route   POST /api/appointments/:id/bill/sms
+// @access  Private
+const resendBillSMS = async (req, res) => {
+  const { id } = req.params;
+  const connection = await db.getConnection();
+
+  try {
+    const [apptRows] = await connection.execute(
+      'SELECT user_id, payment_status, razorpay_order_id, razorpay_payment_id FROM appointments WHERE id = ?',
+      [id]
+    );
+
+    if (apptRows.length === 0) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+
+    const appt = apptRows[0];
+    if (req.user.role !== 'admin' && appt.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized to send this bill SMS' });
+    }
+
+    if (appt.payment_status !== 'Paid' || !appt.razorpay_payment_id) {
+      return res.status(400).json({ message: 'Bill SMS can be sent only after successful Razorpay payment.' });
+    }
+
+    await connection.beginTransaction();
+    const bill = await createPaidBillAndSendSMS(
+      connection,
+      id,
+      appt.user_id,
+      {
+        razorpay_order_id: appt.razorpay_order_id,
+        razorpay_payment_id: appt.razorpay_payment_id,
+      },
+      { forceSms: true }
+    );
+    await connection.commit();
+
+    res.json({
+      message: bill.sms_status === 'sent'
+        ? 'Bill SMS sent successfully'
+        : 'Bill SMS could not be sent. Check SMS status and error.',
+      bill
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Resend Bill SMS Error:', error);
+    res.status(500).json({ message: 'Server error while sending bill SMS', error: error.message });
+  } finally {
+    connection.release();
+  }
+};
+
 module.exports = {
   createAppointment,
   getMyAppointments,
@@ -743,5 +798,6 @@ module.exports = {
   getRazorpayKey,
   searchAppointmentsByPhone,
   createBill,
-  getBill
+  getBill,
+  resendBillSMS
 };

@@ -14,7 +14,8 @@ const {
   getRazorpayKey,
   searchAppointmentsByPhone,
   createBill,
-  getBill
+  getBill,
+  resendBillSMS
 } = require('../controllers/appointmentController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -33,6 +34,7 @@ router.patch('/:id/pay-in-person', protect, payInPerson);
 
 router.post('/:id/bill', protect, admin, createBill);
 router.get('/:id/bill', protect, getBill);
+router.post('/:id/bill/sms', protect, resendBillSMS);
 
 router.get('/razorpay-key', protect, getRazorpayKey);
 router.post('/razorpay-order', protect, createRazorpayOrder);

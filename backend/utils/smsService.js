@@ -41,20 +41,33 @@ const sendFast2SMS = async (phoneNumber, message) => {
     return { success: false, error: 'Valid 10-digit Indian mobile number is required' };
   }
 
-  const { data: payload } = await axios.post(
-    'https://www.fast2sms.com/dev/bulkV2',
-    {
-      route: process.env.FAST2SMS_ROUTE || 'q',
-      message,
-      language: 'english',
-      numbers,
-    },
-    {
-      headers: {
-        authorization: apiKey,
+  let payload;
+  try {
+    const response = await axios.post(
+      'https://www.fast2sms.com/dev/bulkV2',
+      {
+        route: process.env.FAST2SMS_ROUTE || 'q',
+        message,
+        language: 'english',
+        numbers,
       },
-    }
-  );
+      {
+        headers: {
+          authorization: apiKey,
+        },
+      }
+    );
+    payload = response.data;
+  } catch (error) {
+    const providerMessage = error.response?.data?.message || error.response?.data || error.message;
+    return {
+      success: false,
+      provider: 'fast2sms',
+      error: Array.isArray(providerMessage) ? providerMessage.join(', ') : String(providerMessage)
+    };
+  }
+
+  console.log('Fast2SMS response:', payload);
 
   if (payload?.return === false) {
     return {
@@ -107,7 +120,7 @@ const sendPaymentConfirmationSMS = async (phoneNumber, paymentDetails) => {
  * @returns {string} - Formatted message
  */
 const formatBillMessage = (billDetails) => {
-  return `Dear ${billDetails.userName},\n\nYour appointment bill has been generated!\n\nBill Reference: ${billDetails.billNumber}\nTotal Amount: ₹${billDetails.totalAmount}\nAppointment Date: ${billDetails.appointmentDate}\nAppointment Time: ${billDetails.appointmentTime}\nPayment Status: Paid\n\nThank you for choosing StaySync Salon!`;
+  return `Dear ${billDetails.userName}, your bill has been generated successfully. Bill Ref: ${billDetails.billNumber}. Amount: Rs ${billDetails.totalAmount}. Payment Status: Paid. Thank you for choosing StaySync Salon.`;
 };
 
 /**
