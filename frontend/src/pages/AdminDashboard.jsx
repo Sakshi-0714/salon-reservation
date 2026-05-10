@@ -11,6 +11,7 @@ const AdminDashboard = () => {
   const [message, setMessage] = useState('');
   const [selectedBillAppt, setSelectedBillAppt] = useState(null);
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+  const [sendingBillSms, setSendingBillSms] = useState(false);
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('userInfo'));
 
@@ -87,6 +88,30 @@ const AdminDashboard = () => {
         console.error('Error fetching bill', error);
         alert('Failed to fetch bill.');
       }
+    }
+  };
+
+  const sendBillSms = async () => {
+    if (!selectedBillAppt?.appointment_id) return;
+
+    try {
+      setSendingBillSms(true);
+      const config = { headers: { Authorization: `Bearer ${user.token}` } };
+      const { data } = await axios.post(`${API_BASE_URL}/api/appointments/${selectedBillAppt.appointment_id}/bill/sms`, {}, config);
+      setSelectedBillAppt((prev) => ({
+        ...prev,
+        ...data.bill,
+        sms_status: data.bill.sms_status,
+        sms_error: data.bill.sms_error || null,
+      }));
+      setMessage(data.message);
+      setTimeout(() => setMessage(''), 5000);
+    } catch (error) {
+      const messageText = error.response?.data?.message || error.message || 'Failed to send bill SMS';
+      setMessage(messageText);
+      alert(messageText);
+    } finally {
+      setSendingBillSms(false);
     }
   };
 
@@ -336,6 +361,8 @@ const AdminDashboard = () => {
         isOpen={isBillModalOpen} 
         onClose={() => setIsBillModalOpen(false)} 
         bill={selectedBillAppt} 
+        onSendSms={sendBillSms}
+        sendingSms={sendingBillSms}
       />
 
       <style>{`
