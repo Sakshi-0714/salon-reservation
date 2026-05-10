@@ -18,16 +18,28 @@ const generateToken = (id, role) => {
 };
 
 // Create reusable transporter — shared across all functions
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.SMTP_EMAIL,
-    pass: process.env.SMTP_PASSWORD
-  }
-});
+const isEmailConfigured = Boolean(process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD);
+
+const transporter = isEmailConfigured
+  ? nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_EMAIL,
+        pass: process.env.SMTP_PASSWORD
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+    })
+  : null;
 
 // SMTP health check — called from server.js on startup
 const verifySMTP = async () => {
+  if (!transporter) {
+    console.log('SMTP not configured. Email OTP will use mock mode.');
+    return false;
+  }
+
   try {
     await transporter.verify();
     console.log('✅ SMTP connection verified — emails will work');
@@ -65,6 +77,14 @@ const sendVerification = async (req, res) => {
       'INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
       [email, code]
     );
+
+    if (!transporter) {
+      console.log(`Mock verification code for ${email}: ${code}`);
+      return res.status(200).json({
+        message: 'Verification code generated. SMTP is not configured, so use the code shown here.',
+        devCode: code
+      });
+    }
 
     let message = {
       from: `"StaySync Salon" <${process.env.SMTP_EMAIL}>`,
@@ -284,6 +304,14 @@ const sendResetCode = async (req, res) => {
       'INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
       [email, code]
     );
+
+    if (!transporter) {
+      console.log(`Mock password reset code for ${email}: ${code}`);
+      return res.status(200).json({
+        message: 'Reset code generated. SMTP is not configured, so use the code shown here.',
+        devCode: code
+      });
+    }
 
     let message = {
       from: `"StaySync Salon" <${process.env.SMTP_EMAIL}>`,

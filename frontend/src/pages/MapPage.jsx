@@ -205,7 +205,7 @@ const MapPage = () => {
         setIsLocating(false);
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            setErrorMsg("Location permission denied. Please allow location access in your browser settings and try again.");
+            setErrorMsg("Location permission denied. Click the lock icon in the address bar, allow Location for this site, then try again. You can also enter your address manually below.");
             break;
           case error.POSITION_UNAVAILABLE:
             setErrorMsg("Location information is unavailable. Please try entering your address manually.");

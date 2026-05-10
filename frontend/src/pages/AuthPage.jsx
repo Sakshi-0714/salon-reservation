@@ -206,11 +206,13 @@ const AuthPage = () => {
     setLoading(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/api/auth/send-verification`, {
+      const { data } = await axios.post(`${API_BASE_URL}/api/auth/send-verification`, {
         email: formData.email
       });
 
-      setSuccessMsg('Verification code sent! Please check your email inbox. This code is valid for 10 minutes.');
+      setSuccessMsg(data.devCode
+        ? `Verification code: ${data.devCode}. Enter this code to continue.`
+        : 'Verification code sent! Please check your email inbox. This code is valid for 10 minutes.');
       setRegisterStep(2);
     } catch (err) {
       if (err.response) {
@@ -231,11 +233,13 @@ const AuthPage = () => {
     setLoading(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/api/auth/send-verification`, {
+      const { data } = await axios.post(`${API_BASE_URL}/api/auth/send-verification`, {
         email: formData.email
       });
 
-      setSuccessMsg('New verification code sent! Check your email. This code is valid for 10 minutes.');
+      setSuccessMsg(data.devCode
+        ? `New verification code: ${data.devCode}. Enter this code to continue.`
+        : 'New verification code sent! Check your email. This code is valid for 10 minutes.');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to resend code');
     }
@@ -319,11 +323,13 @@ const AuthPage = () => {
     setForgotLoading(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/api/auth/send-reset-code`, {
+      const { data } = await axios.post(`${API_BASE_URL}/api/auth/send-reset-code`, {
         email: forgotData.email
       });
 
-      setForgotSuccess('Reset code sent! Please check your email inbox. This code is valid for 10 minutes.');
+      setForgotSuccess(data.devCode
+        ? `Reset code: ${data.devCode}. Enter this code to continue.`
+        : 'Reset code sent! Please check your email inbox. This code is valid for 10 minutes.');
       setForgotStep(2);
     } catch (err) {
       if (err.response) {
@@ -344,11 +350,13 @@ const AuthPage = () => {
     setForgotLoading(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/api/auth/send-reset-code`, {
+      const { data } = await axios.post(`${API_BASE_URL}/api/auth/send-reset-code`, {
         email: forgotData.email
       });
 
-      setForgotSuccess('New reset code sent! Check your email. This code is valid for 10 minutes.');
+      setForgotSuccess(data.devCode
+        ? `New reset code: ${data.devCode}. Enter this code to continue.`
+        : 'New reset code sent! Check your email. This code is valid for 10 minutes.');
     } catch (err) {
       setForgotError(err.response?.data?.message || 'Failed to resend code');
     }
