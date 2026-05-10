@@ -84,12 +84,14 @@ app.get('/health/details', async (req, res) => {
       'updated_at'
     ];
 
+    const fast2smsConfigured = Boolean(process.env.FAST2SMS_API_KEY);
+
     res.json({
       status: 'ok',
       smtp_configured: Boolean(process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD),
       razorpay_configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
-      sms_provider: process.env.SMS_PROVIDER || 'mock',
-      fast2sms_configured: Boolean(process.env.FAST2SMS_API_KEY),
+      sms_provider: fast2smsConfigured ? 'fast2sms' : process.env.SMS_PROVIDER || 'mock',
+      fast2sms_configured: fast2smsConfigured,
       bill_schema_ok: requiredBillColumns.every(column => columns.includes(column)),
       missing_bill_columns: requiredBillColumns.filter(column => !columns.includes(column)),
     });

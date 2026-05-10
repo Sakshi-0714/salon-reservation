@@ -18,7 +18,7 @@ const sendBillSMS = async (phoneNumber, billDetails) => {
   }
 
   const message = formatBillMessage(billDetails);
-  if ((process.env.SMS_PROVIDER || 'mock').toLowerCase() === 'fast2sms') {
+  if (getSmsProvider() === 'fast2sms') {
     return sendFast2SMS(phoneNumber, message);
   }
 
@@ -72,6 +72,11 @@ const sendFast2SMS = async (phoneNumber, message) => {
     requestId: payload.request_id,
     message: Array.isArray(payload.message) ? payload.message.join(', ') : 'SMS sent'
   };
+};
+
+const getSmsProvider = () => {
+  if (process.env.FAST2SMS_API_KEY) return 'fast2sms';
+  return (process.env.SMS_PROVIDER || 'mock').toLowerCase();
 };
 
 /**
