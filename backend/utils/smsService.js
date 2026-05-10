@@ -16,12 +16,68 @@ const sendBillSMS = async (phoneNumber, billDetails) => {
   }
 
   const message = formatBillMessage(billDetails);
+  if ((process.env.SMS_PROVIDER || 'mock').toLowerCase() === 'fast2sms') {
+    return sendFast2SMS(phoneNumber, message);
+  }
+
   console.log('--- Mock SMS: Bill Delivery ---');
   console.log(`To: ${phoneNumber}`);
   console.log(message);
   console.log('--- End Mock SMS ---');
 
   return { success: true, simulated: true, message: 'Mock SMS sent' };
+};
+
+const sendFast2SMS = async (phoneNumber, message) => {
+  const apiKey = process.env.FAST2SMS_API_KEY;
+  if (!apiKey) {
+    return { success: false, error: 'FAST2SMS_API_KEY is not configured' };
+  }
+
+  const numbers = normalizeIndianMobile(phoneNumber);
+  if (!numbers) {
+    return { success: false, error: 'Valid 10-digit Indian mobile number is required' };
+  }
+
+  const response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+    method: 'POST',
+    headers: {
+      authorization: apiKey,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      accept: 'application/json'
+    },
+    body: new URLSearchParams({
+      route: process.env.FAST2SMS_ROUTE || 'q',
+      message,
+      numbers,
+      flash: '0'
+    })
+  });
+
+  const responseText = await response.text();
+  let payload = {};
+  try {
+    payload = JSON.parse(responseText);
+  } catch (error) {
+    payload = { raw: responseText };
+  }
+
+  if (!response.ok || payload.return === false) {
+    return {
+      success: false,
+      provider: 'fast2sms',
+      error: Array.isArray(payload.message)
+        ? payload.message.join(', ')
+        : payload.message || `Fast2SMS failed with status ${response.status}`
+    };
+  }
+
+  return {
+    success: true,
+    provider: 'fast2sms',
+    requestId: payload.request_id,
+    message: Array.isArray(payload.message) ? payload.message.join(', ') : 'SMS sent'
+  };
 };
 
 /**
@@ -70,6 +126,14 @@ const formatPhoneNumber = (phone) => {
   }
   // Return as-is if already formatted
   return phone.startsWith('+') ? phone : `+91${digits}`;
+};
+
+const normalizeIndianMobile = (phone) => {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 10) return digits;
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  return '';
 };
 
 module.exports = {

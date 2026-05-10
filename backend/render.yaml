@@ -19,7 +19,11 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: SMS_PROVIDER
-        value: mock
+        value: fast2sms
+      - key: FAST2SMS_API_KEY
+        sync: false
+      - key: FAST2SMS_ROUTE
+        value: q
       - key: SMTP_EMAIL
         sync: false
       - key: SMTP_PASSWORD
