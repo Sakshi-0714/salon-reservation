@@ -19,7 +19,6 @@ const sendBillSMS = async (phoneNumber, billDetails) => {
 const sendSMSLocal = async (phoneNumber, message) => {
   const apiKey = process.env.SMSLOCAL_API_KEY;
   const route = process.env.SMSLOCAL_ROUTE;
-  const sender = process.env.SMSLOCAL_SENDER_ID;
   const templateId = process.env.SMSLOCAL_TEMPLATE_ID;
 
   if (!apiKey || !route) {
@@ -45,10 +44,6 @@ const sendSMSLocal = async (phoneNumber, message) => {
     number,
     sms: message,
   });
-
-  if (sender) {
-    params.set('sender', sender);
-  }
 
   if (templateId) {
     params.set('templateid', templateId);

@@ -24,8 +24,6 @@ services:
         sync: false
       - key: SMSLOCAL_ROUTE
         sync: false
-      - key: SMSLOCAL_SENDER_ID
-        sync: false
       - key: SMSLOCAL_TEMPLATE_ID
         sync: false
       - key: SMTP_EMAIL
