@@ -210,6 +210,7 @@ const AuthPage = () => {
         email: formData.email
       });
 
+      setFormData((prev) => ({ ...prev, code: '' }));
       setSuccessMsg(data.devCode
         ? `Verification code: ${data.devCode}. Enter this code to continue.`
         : 'Verification code sent! Please check your email inbox. This code is valid for 10 minutes.');
@@ -237,6 +238,7 @@ const AuthPage = () => {
         email: formData.email
       });
 
+      setFormData((prev) => ({ ...prev, code: '' }));
       setSuccessMsg(data.devCode
         ? `New verification code: ${data.devCode}. Enter this code to continue.`
         : 'New verification code sent! Check your email. This code is valid for 10 minutes.');
@@ -327,6 +329,7 @@ const AuthPage = () => {
         email: forgotData.email
       });
 
+      setForgotData((prev) => ({ ...prev, code: '' }));
       setForgotSuccess(data.devCode
         ? `Reset code: ${data.devCode}. Enter this code to continue.`
         : 'Reset code sent! Please check your email inbox. This code is valid for 10 minutes.');
@@ -354,6 +357,7 @@ const AuthPage = () => {
         email: forgotData.email
       });
 
+      setForgotData((prev) => ({ ...prev, code: '' }));
       setForgotSuccess(data.devCode
         ? `New reset code: ${data.devCode}. Enter this code to continue.`
         : 'New reset code sent! Check your email. This code is valid for 10 minutes.');

@@ -107,7 +107,7 @@ const AdminDashboard = () => {
       setMessage(data.message);
       setTimeout(() => setMessage(''), 5000);
     } catch (error) {
-      const messageText = error.response?.data?.message || error.message || 'Failed to send bill SMS';
+      const messageText = error.response?.data?.message || error.message || 'Failed to send bill message';
       setMessage(messageText);
       alert(messageText);
     } finally {
@@ -309,7 +309,7 @@ const AdminDashboard = () => {
                                 className={`btn-primary ${service.status === 'Completed' ? 'btn-disabled' : ''}`}
                                 style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#2ecc71', borderColor: '#2ecc71', flex: 1, minWidth: '60px' }} 
                                 onClick={() => updateStatus(appt.id, idx, service.status, 'Completed')}
-                                disabled={service.status === 'Cancelled'}
+                                disabled={service.status === 'Cancelled' || service.status === 'Not Available'}
                               >
                                 Complete
                               </button>

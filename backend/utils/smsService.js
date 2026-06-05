@@ -4,21 +4,24 @@ const sendBillSMS = async (phoneNumber, billDetails) => {
   }
 
   const message = formatBillMessage(billDetails);
-  if (getSmsProvider() === 'smslocal') {
+  const provider = getMessageProvider();
+
+  if (provider === 'smslocal') {
     return sendSMSLocal(phoneNumber, message);
   }
 
-  console.log('--- Mock SMS: Bill Delivery ---');
+  console.log('--- Mock Message: Bill Delivery ---');
   console.log(`To: ${phoneNumber}`);
   console.log(message);
-  console.log('--- End Mock SMS ---');
+  console.log('--- End Mock Message ---');
 
-  return { success: true, simulated: true, message: 'Mock SMS sent' };
+  return { success: true, simulated: true, provider: 'mock', message: 'Mock bill message sent' };
 };
 
 const sendSMSLocal = async (phoneNumber, message) => {
   const apiKey = process.env.SMSLOCAL_API_KEY;
   const route = process.env.SMSLOCAL_ROUTE;
+  const sender = process.env.SMSLOCAL_SENDER_ID;
   const templateId = process.env.SMSLOCAL_TEMPLATE_ID;
 
   if (!apiKey || !route) {
@@ -44,6 +47,10 @@ const sendSMSLocal = async (phoneNumber, message) => {
     number,
     sms: message,
   });
+
+  if (sender) {
+    params.set('sender', sender);
+  }
 
   if (templateId) {
     params.set('templateid', templateId);
@@ -99,7 +106,9 @@ const sendPaymentConfirmationSMS = async (phoneNumber, paymentDetails) => {
   }
 
   const message = `Dear ${paymentDetails.userName}, your payment of Rs ${paymentDetails.amount} has been received successfully. Bill Ref: ${paymentDetails.billNumber}. Thank you for choosing StaySync Salon.`;
-  if (getSmsProvider() === 'smslocal') {
+  const provider = getMessageProvider();
+
+  if (provider === 'smslocal') {
     return sendSMSLocal(phoneNumber, message);
   }
 
@@ -112,7 +121,13 @@ const sendPaymentConfirmationSMS = async (phoneNumber, paymentDetails) => {
 };
 
 const formatBillMessage = (billDetails) => {
-  return `Dear ${billDetails.userName}, your StaySync bill has been generated. Bill Ref: ${billDetails.billNumber}. Amount: Rs ${billDetails.totalAmount}. Status: Paid. Thank you.`;
+  return [
+    `Dear ${billDetails.userName}, your StaySync Salon bill has been generated.`,
+    `Bill Ref: ${billDetails.billNumber}`,
+    `Amount: Rs ${billDetails.totalAmount}`,
+    'Status: Paid',
+    'Thank you for choosing StaySync Salon.'
+  ].join('\n');
 };
 
 const formatPhoneNumber = (phone) => {
@@ -141,11 +156,12 @@ const normalizeIndianMobile = (phone) => {
   return '';
 };
 
-const getSmsProvider = () => {
-  const provider = String(process.env.SMS_PROVIDER || '').toLowerCase();
+const getMessageProvider = () => {
+  const provider = String(process.env.MESSAGE_PROVIDER || '').toLowerCase();
   if (provider) return provider;
   return process.env.SMSLOCAL_API_KEY ? 'smslocal' : 'mock';
 };
+
 
 const getSMSLocalError = (responseText) => {
   const code = String(responseText || '').trim();

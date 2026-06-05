@@ -79,11 +79,11 @@ const createPaidBillAndSendSMS = async (connection, appointmentId, userId, payme
     try {
       const smsResult = await sendBillSMS(formattedPhone, billDetails);
       smsStatus = smsResult.success ? 'sent' : 'failed';
-      smsError = smsResult.success ? null : smsResult.error || 'SMS delivery failed';
+      smsError = smsResult.success ? null : smsResult.error || 'Bill message delivery failed';
     } catch (error) {
       smsStatus = 'failed';
-      smsError = error.message || 'SMS delivery failed';
-      console.error(`Bill SMS failed for appointment ${appointmentId}:`, smsError);
+      smsError = error.message || 'Bill message delivery failed';
+      console.error(`Bill message failed for appointment ${appointmentId}:`, smsError);
     }
   } else {
     smsError = 'Registered mobile number is not available';
@@ -289,6 +289,10 @@ const updateAppointmentStatus = async (req, res) => {
     }
 
     if (services[serviceIndex]) {
+      const currentStatus = services[serviceIndex].status;
+      if (status === 'Completed' && (currentStatus === 'Not Available' || currentStatus === 'Cancelled')) {
+        return res.status(400).json({ message: `Cannot mark a ${currentStatus.toLowerCase()} service as completed.` });
+      }
       services[serviceIndex].status = status;
     }
 
@@ -730,7 +734,7 @@ const getBill = async (req, res) => {
   }
 };
 
-// @desc    Force resend bill SMS for a paid appointment
+// @desc    Force resend bill message for a paid appointment
 // @route   POST /api/appointments/:id/bill/sms
 // @access  Private
 const resendBillSMS = async (req, res) => {
@@ -749,11 +753,11 @@ const resendBillSMS = async (req, res) => {
 
     const appt = apptRows[0];
     if (req.user.role !== 'admin' && appt.user_id !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized to send this bill SMS' });
+      return res.status(403).json({ message: 'Not authorized to send this bill message' });
     }
 
     if (appt.payment_status !== 'Paid' || !appt.razorpay_payment_id) {
-      return res.status(400).json({ message: 'Bill SMS can be sent only after successful Razorpay payment.' });
+      return res.status(400).json({ message: 'Bill message can be sent only after successful Razorpay payment.' });
     }
 
     await connection.beginTransaction();
@@ -771,14 +775,14 @@ const resendBillSMS = async (req, res) => {
 
     res.json({
       message: bill.sms_status === 'sent'
-        ? 'Bill SMS sent successfully'
-        : 'Bill SMS could not be sent. Check SMS status and error.',
+        ? 'Bill sent successfully'
+        : 'Bill could not be sent. Check message status and error.',
       bill
     });
   } catch (error) {
     await connection.rollback();
-    console.error('Resend Bill SMS Error:', error);
-    res.status(500).json({ message: 'Server error while sending bill SMS', error: error.message });
+    console.error('Resend Bill Message Error:', error);
+    res.status(500).json({ message: 'Server error while sending bill message', error: error.message });
   } finally {
     connection.release();
   }

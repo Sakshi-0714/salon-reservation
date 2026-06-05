@@ -145,10 +145,10 @@ const AppointmentsPage = () => {
               appointment_ids: groupIds
             }, config);
 
-            const failedSms = paymentData.bills?.find((bill) => bill.sms_status && bill.sms_status !== 'sent');
-            setMessage(failedSms
-              ? `Payment successful, but bill SMS was not sent: ${failedSms.sms_error || failedSms.sms_status}`
-              : `Online payment successful via Razorpay. Bill SMS sent to your registered mobile number.`
+            const failedMessage = paymentData.bills?.find((bill) => bill.sms_status && bill.sms_status !== 'sent');
+            setMessage(failedMessage
+              ? `Payment successful, but bill message was not sent: ${failedMessage.sms_error || failedMessage.sms_status}`
+              : `Online payment successful via Razorpay. Bill sent to your registered mobile number.`
             );
             
             setAppointments(appointments.map(a => 
@@ -313,7 +313,7 @@ const AppointmentsPage = () => {
       }));
       setMessage(data.message);
     } catch (error) {
-      const messageText = error.response?.data?.message || error.message || 'Failed to send bill SMS';
+      const messageText = error.response?.data?.message || error.message || 'Failed to send bill message';
       setMessage(messageText);
       alert(messageText);
     } finally {

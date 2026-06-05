@@ -84,15 +84,13 @@ app.get('/health/details', async (req, res) => {
       'updated_at'
     ];
 
-    const smsProvider = process.env.SMSLOCAL_API_KEY
-      ? 'smslocal'
-      : 'mock';
+    const messageProvider = String(process.env.MESSAGE_PROVIDER || '').toLowerCase() || 'mock';
 
     res.json({
       status: 'ok',
       smtp_configured: Boolean(process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD),
       razorpay_configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
-      sms_provider: smsProvider,
+      message_provider: messageProvider,
       smslocal_configured: Boolean(
         process.env.SMSLOCAL_API_KEY &&
         process.env.SMSLOCAL_ROUTE

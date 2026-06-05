@@ -1,7 +1,7 @@
 services:
   - type: web
     name: salon-backend
-    env: node
+    runtime: node
     plan: free
     buildCommand: npm install
     startCommand: npm start
@@ -18,11 +18,12 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
-      - key: SMS_PROVIDER
-        value: smslocal
+
       - key: SMSLOCAL_API_KEY
         sync: false
       - key: SMSLOCAL_ROUTE
+        sync: false
+      - key: SMSLOCAL_SENDER_ID
         sync: false
       - key: SMSLOCAL_TEMPLATE_ID
         sync: false

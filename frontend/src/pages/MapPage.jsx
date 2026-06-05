@@ -296,7 +296,7 @@ const MapPage = () => {
             Find the Salon
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem', textAlign: 'center' }}>
-            We are deeply rooted right in Hindwadi opposite to Lokmanya Society. Enter an Indian starting point to calculate distance and drive time down to the exact hour!
+            We are deeply rooted right in Hindwadi opposite to Lokmanya Society. 
           </p>
 
           <button 

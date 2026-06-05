@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
+const { randomInt } = require('crypto');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 
@@ -20,8 +21,32 @@ const validatePhone = (phone) => {
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'supersecret123salonkey', {
-    expiresIn: '30d',
+    expiresIn: '1d',
   });
+};
+
+const generateVerificationCode = (previousCode) => {
+  let code;
+  do {
+    code = randomInt(1000, 10000).toString();
+  } while (code === previousCode);
+  return code;
+};
+
+const createVerificationCode = async (email) => {
+  const [existingCodes] = await db.execute(
+    'SELECT code FROM verification_codes WHERE email = ? ORDER BY id DESC LIMIT 1',
+    [email]
+  );
+  const code = generateVerificationCode(existingCodes[0]?.code);
+
+  await db.execute('DELETE FROM verification_codes WHERE email = ?', [email]);
+  await db.execute(
+    'INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
+    [email, code]
+  );
+
+  return code;
 };
 
 // Create reusable transporter — shared across all functions
@@ -29,14 +54,23 @@ const isEmailConfigured = Boolean(process.env.SMTP_EMAIL && process.env.SMTP_PAS
 
 const transporter = isEmailConfigured
   ? nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,           // STARTTLS on port 587
       auth: {
         user: process.env.SMTP_EMAIL,
         pass: process.env.SMTP_PASSWORD
       },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
+      tls: {
+        rejectUnauthorized: false  // accept self-signed certs from receiving servers
+      },
+      pool: true,              // reuse connections
+      maxConnections: 3,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000,
+      logger: process.env.NODE_ENV === 'development',  // log SMTP in dev
+      debug: process.env.NODE_ENV === 'development',
     })
   : null;
 
@@ -50,6 +84,7 @@ const verifySMTP = async () => {
   try {
     await transporter.verify();
     console.log('✅ SMTP connection verified — emails will work');
+    console.log(`   Sending from: ${process.env.SMTP_EMAIL}`);
     return true;
   } catch (err) {
     console.error('❌ SMTP verification failed:', err.message);
@@ -76,34 +111,34 @@ const sendVerification = async (req, res) => {
       return res.status(400).json({ message: 'User already exists with this email' });
     }
 
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-
-    // Delete any existing codes for this email first to avoid stale entries
-    await db.execute('DELETE FROM verification_codes WHERE email = ?', [email]);
-    await db.execute(
-      'INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
-      [email, code]
-    );
+    const code = await createVerificationCode(email);
 
     if (!transporter) {
-      console.log(`Mock verification code for ${email}: ${code}`);
-      return res.status(200).json({
-        message: 'Verification code generated. SMTP is not configured, so use the code shown here.',
-        devCode: code
+      console.error('SMTP not configured. Cannot send verification email.');
+      return res.status(500).json({
+        message: 'Email service is not configured. Please contact the administrator.'
       });
     }
 
     let message = {
       from: `"StaySync Salon" <${process.env.SMTP_EMAIL}>`,
+      replyTo: process.env.SMTP_EMAIL,
       to: email,
-      subject: 'Your Verification Code — StaySync Salon',
-      text: `Your registration verification code is: ${code}\n\nThis code expires in 10 minutes.`,
+      subject: 'Your Verification Code - StaySync Salon',
+      priority: 'high',
+      headers: {
+        'X-Priority': '1',
+        'X-Mailer': 'StaySync Salon Mailer'
+      },
+      text: `Your registration verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, please ignore this email.`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 30px; background: #1e1c1b; color: #f5f5f5; border-radius: 8px;">
-          <h2 style="color: #ffa396; text-align: center; margin-bottom: 20px;">StaySync Salon</h2>
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 30px; background: #ffffff; color: #333333; border-radius: 8px; border: 1px solid #e0e0e0;">
+          <h2 style="color: #d4594e; text-align: center; margin-bottom: 20px;">StaySync Salon</h2>
           <p style="text-align: center; font-size: 16px; margin-bottom: 10px;">Your verification code is:</p>
-          <div style="text-align: center; font-size: 36px; font-weight: bold; color: #ffa396; letter-spacing: 8px; padding: 20px; background: rgba(255,163,150,0.1); border-radius: 8px; margin-bottom: 20px;">${code}</div>
-          <p style="text-align: center; font-size: 14px; color: #a6a6a6;">This code expires in <strong>10 minutes</strong>.</p>
+          <div style="text-align: center; font-size: 36px; font-weight: bold; color: #d4594e; letter-spacing: 8px; padding: 20px; background: #fef2f0; border-radius: 8px; margin-bottom: 20px;">${code}</div>
+          <p style="text-align: center; font-size: 14px; color: #888888;">This code expires in <strong>10 minutes</strong>.</p>
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
+          <p style="text-align: center; font-size: 12px; color: #aaaaaa;">If you did not request this code, please ignore this email.</p>
         </div>
       `
     };
@@ -111,13 +146,12 @@ const sendVerification = async (req, res) => {
     // Use await instead of callback — this ensures response is sent only after email send completes/fails
     try {
       const info = await transporter.sendMail(message);
-      console.log('Verification email sent to', email, '| MessageId:', info.messageId);
+      console.log('Verification email sent to', email, '| MessageId:', info.messageId, '| Response:', info.response);
       res.status(200).json({ message: 'Verification code sent! Please check your email inbox.' });
     } catch (emailError) {
-      console.warn(`Email delivery failed for ${email}. Falling back to mock OTP:`, emailError.message);
-      return res.status(200).json({
-        message: 'Email delivery failed, so use the verification code shown here.',
-        devCode: code
+      console.error(`Email delivery failed for ${email}:`, emailError.message);
+      return res.status(500).json({
+        message: 'Failed to send verification email. Please try again later.'
       });
     }
   } catch (error) {
@@ -314,34 +348,34 @@ const sendResetCode = async (req, res) => {
       return res.status(400).json({ message: 'No account found with this email' });
     }
 
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-
-    // Delete old codes, insert new
-    await db.execute('DELETE FROM verification_codes WHERE email = ?', [email]);
-    await db.execute(
-      'INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
-      [email, code]
-    );
+    const code = await createVerificationCode(email);
 
     if (!transporter) {
-      console.log(`Mock password reset code for ${email}: ${code}`);
-      return res.status(200).json({
-        message: 'Reset code generated. SMTP is not configured, so use the code shown here.',
-        devCode: code
+      console.error('SMTP not configured. Cannot send reset email.');
+      return res.status(500).json({
+        message: 'Email service is not configured. Please contact the administrator.'
       });
     }
 
     let message = {
       from: `"StaySync Salon" <${process.env.SMTP_EMAIL}>`,
+      replyTo: process.env.SMTP_EMAIL,
       to: email,
-      subject: 'Password Reset Code — StaySync Salon',
-      text: `Your password reset code is: ${code}\n\nThis code expires in 10 minutes.`,
+      subject: 'Password Reset Code - StaySync Salon',
+      priority: 'high',
+      headers: {
+        'X-Priority': '1',
+        'X-Mailer': 'StaySync Salon Mailer'
+      },
+      text: `Your password reset code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, please ignore this email.`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 30px; background: #1e1c1b; color: #f5f5f5; border-radius: 8px;">
-          <h2 style="color: #ffa396; text-align: center; margin-bottom: 20px;">StaySync Salon</h2>
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 30px; background: #ffffff; color: #333333; border-radius: 8px; border: 1px solid #e0e0e0;">
+          <h2 style="color: #d4594e; text-align: center; margin-bottom: 20px;">StaySync Salon</h2>
           <p style="text-align: center; font-size: 16px; margin-bottom: 10px;">Your password reset code is:</p>
-          <div style="text-align: center; font-size: 36px; font-weight: bold; color: #ffa396; letter-spacing: 8px; padding: 20px; background: rgba(255,163,150,0.1); border-radius: 8px; margin-bottom: 20px;">${code}</div>
-          <p style="text-align: center; font-size: 14px; color: #a6a6a6;">This code expires in <strong>10 minutes</strong>.</p>
+          <div style="text-align: center; font-size: 36px; font-weight: bold; color: #d4594e; letter-spacing: 8px; padding: 20px; background: #fef2f0; border-radius: 8px; margin-bottom: 20px;">${code}</div>
+          <p style="text-align: center; font-size: 14px; color: #888888;">This code expires in <strong>10 minutes</strong>.</p>
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
+          <p style="text-align: center; font-size: 12px; color: #aaaaaa;">If you did not request this code, please ignore this email.</p>
         </div>
       `
     };
@@ -349,13 +383,12 @@ const sendResetCode = async (req, res) => {
     // Use await instead of callback
     try {
       const info = await transporter.sendMail(message);
-      console.log('Reset code sent to', email, '| MessageId:', info.messageId);
+      console.log('Reset code sent to', email, '| MessageId:', info.messageId, '| Response:', info.response);
       res.status(200).json({ message: 'Reset code sent! Please check your email inbox.' });
     } catch (emailError) {
-      console.warn(`Reset email delivery failed for ${email}. Falling back to mock OTP:`, emailError.message);
-      return res.status(200).json({
-        message: 'Email delivery failed, so use the reset code shown here.',
-        devCode: code
+      console.error(`Reset email delivery failed for ${email}:`, emailError.message);
+      return res.status(500).json({
+        message: 'Failed to send reset email. Please try again later.'
       });
     }
   } catch (error) {
